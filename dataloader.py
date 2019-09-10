@@ -6,9 +6,12 @@ import pandas as pd
 
 import torch
 import torch.utils.data
+import torchvision.transforms as transforms
+
+from PIL import Image
 
 class MPIIFaceGazeDataset(torch.utils.data.Dataset):
-    def __init__(self, subject_id, dataset_dir):
+    def __init__(self, subject_id, dataset_dir, transform=None):
         """
             Load hdf5 file header into memory.
         """
@@ -17,6 +20,7 @@ class MPIIFaceGazeDataset(torch.utils.data.Dataset):
         self.dataset = None
         with h5py.File(self.path, 'r') as file:
             self.length = len(file["data"])
+        self.transform = transform
 
     def __getitem__(self, index):
         """
@@ -29,15 +33,18 @@ class MPIIFaceGazeDataset(torch.utils.data.Dataset):
             self.images = self.dataset['data']
             self.gazes = self.dataset['label']
 
+
         # original shape: [channel[BGR], x, y]
         # [2, 1, 0] reshapes BGR to RGB [channel[RGB], x, y]
         # couple of transposes to put image to correct representation
         # first one puts channel dim last and brings forward the y dim [y, x, channel[RGB]]
         # second brings forward the x dim and puts y dim second [x, y, channel[RGB]]
-        #img = torch.from_numpy((self.images[index][[2, 1, 0],:,:])).transpose(2, 0).transpose(1, 0)
         img = torch.from_numpy((self.images[index][[2, 1, 0],:,:])) # expected input [32, 3, 448, 448]
-        #img = torch.unsqueeze(torch.from_numpy((self.images[index][[2, 1, 0],:,:])).transpose(2, 0).transpose(1, 0), 1)
         gaze = torch.from_numpy(self.gazes[index][0:2])
+
+        if self.transform:
+            img = self.transform(img)
+
         return img, gaze
 
     def __len__(self):
@@ -67,13 +74,20 @@ def get_loader(dataset_dir, test_subject_id, batch_size, num_workers, use_gpu):
     for file_part in range(2):
         test_subject_ids.append(base_test_subject_id + '_' + str(file_part))
 
+    # transform = transforms.Compose([
+        # transforms.Resize((224)),
+    #    transforms.ToTensor(),
+    # ])
+
+    transform = None
+
     train_dataset = torch.utils.data.ConcatDataset([
-        MPIIFaceGazeDataset(subject_id, dataset_dir) for subject_id in subject_ids
+        MPIIFaceGazeDataset(subject_id, dataset_dir, transform=transform) for subject_id in subject_ids
         if subject_id not in test_subject_ids
     ])
 
     test_dataset = torch.utils.data.ConcatDataset([
-        MPIIFaceGazeDataset(i, dataset_dir) for i in test_subject_ids
+        MPIIFaceGazeDataset(i, dataset_dir, transform=transform) for i in test_subject_ids
     ])
 
     assert len(train_dataset) == 42000
