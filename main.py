@@ -1,7 +1,11 @@
+# /usr/local/python3
+# -*- coding: utf-8 -*-
+
 # https://github.com/ti-ginkgo/MPIIFaceGaze/blob/master/main.py
 import os
 import sys
 import argparse
+import ast
 import json
 import time
 import logging
@@ -19,7 +23,6 @@ from models import GazeNet
 from dataloader import get_loader
 from utils import AverageMeter, compute_angle_error
 
-use_cuda = False
 global_step = 0
 
 logging.basicConfig(
@@ -29,11 +32,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-if use_cuda:
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def validate(epoch, model, criterion, test_loader):
-    global global_step, use_cuda
+def validate(args, epoch, model, criterion, test_loader):
+    global global_step
 
     logger.info('Test {}'.format(epoch))
     loss_meter = AverageMeter()
@@ -41,7 +42,7 @@ def validate(epoch, model, criterion, test_loader):
     start = time.time()
 
     for step, (images, gazes) in enumerate(test_loader):
-        if use_cuda:
+        if args.use_cuda:
             images = images.cuda()
             gazes = gazes.cuda()
 
@@ -66,8 +67,8 @@ def validate(epoch, model, criterion, test_loader):
         return angle_error_meter.avg
 
 
-def train(epoch, model, optimizer, criterion, train_loader):
-    global global_step, use_cuda
+def train(args, epoch, model, optimizer, criterion, train_loader):
+    global global_step
 
     logger.info('Train {}'.format(epoch))
     model.train()
@@ -77,10 +78,9 @@ def train(epoch, model, optimizer, criterion, train_loader):
     start = time.time()
 
     for step, (images, gazes) in enumerate(train_loader):
-        print("Step: ", step)
         global_step += 1
 
-        if use_cuda:
+        if args.use_cuda:
             images = images.cuda()
             gazes = gazes.cuda()
 
@@ -88,8 +88,6 @@ def train(epoch, model, optimizer, criterion, train_loader):
         optimizer.zero_grad()
 
         outputs = model(images)
-        print("Gazes: ", gazes)
-        print("Outputs: ", outputs)
         loss = criterion(outputs, gazes)
         loss.backward()
 
@@ -102,7 +100,7 @@ def train(epoch, model, optimizer, criterion, train_loader):
 
         print("Epoch {} Step {}/{} Loss {:.4f} Angle Error {:.2f}".format(epoch, step, len(train_loader), loss_meter.avg, angle_error_meter.avg))
 
-        if step % 100 == 0:
+        if step % 10 == 0:
             logger.info('Epoch {} Step {}/{}\t'
                         'Loss {:.4f} ({:.4f})\t'
                         'Angle Error {:.2f} ({:.2f})'.format(
@@ -114,6 +112,8 @@ def train(epoch, model, optimizer, criterion, train_loader):
                             angle_error_meter.val,
                             angle_error_meter.avg,
                         ))
+            print("Gaze[0:2]: ", gazes[0:2])
+            print("Output[0:2]: ", outputs[0:2])
         elapsed = time.time() - start
         logger.info('Elapsed {:.2f}'.format(elapsed))
 
@@ -126,7 +126,10 @@ def main(args):
     β2 = 0.95. An initial learning rate of 0.00001 was used and multiplied by 0.1 after
     every 5,000 iterations.
     """
-    global use_cuda
+    global device
+
+    if args.use_cuda:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     logger.info(json.dumps(vars(args), indent=2))
 
@@ -150,7 +153,7 @@ def main(args):
     )
 
     model = GazeNet()
-    if use_cuda:
+    if args.use_cuda:
         model.cuda()
 
     #criterion = nn.MSELoss(size_average=True)
@@ -167,18 +170,19 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.95))
 
     lr_scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[20, 30], gamma=args.lr_decay
+        optimizer, milestones=ast.literal_eval(args.milestones), gamma=args.lr_decay
     )
 
-    validate(0, model, criterion, val_loader)
+    validate(args, 0, model, criterion, val_loader)
 
     for epoch in range(1, args.epochs+1):
-        # lr decay
-        lr_scheduler.step()
 
         # train and get validation error
-        train(epoch, model, optimizer, criterion, train_loader)
-        angle_error = validate(epoch, model, criterion, val_loader)
+        train(args, epoch, model, optimizer, criterion, train_loader)
+        angle_error = validate(args, epoch, model, criterion, val_loader)
+
+        # lr decay
+        lr_scheduler.step()
 
         state = OrderedDict([
             ('args', vars(args)),
@@ -193,20 +197,21 @@ def main(args):
 
 def arg_parser(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='MPIIFaceGaze_normalized')
+    parser.add_argument('--dataset', type=str, default='/media/nvidia/HDLuiza/Dataset/Gaze/MPIIFaceGaze_normalizad')
     parser.add_argument('--test_id', type=int, default=0)
     parser.add_argument('--outdir', type=str, default='output')
     parser.add_argument('--seed', type=int, default=6)
     parser.add_argument('--num_workers', type=int, default=8)
 
-    parser.add_argument('--epochs', type=int, default=40)
-    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=30)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--nesterov', type=bool, default=True)
-    parser.add_argument('--milestones', type=str, default='[20, 30]')
+    parser.add_argument('--milestones', type=str, default='[5, 10, 20, 30]')
     parser.add_argument('--lr_decay', type=float, default=0.1)
+    parser.add_argument('--use_cuda', type=bool, default=True)
 
     return parser.parse_args(argv)
 

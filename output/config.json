@@ -1,15 +1,16 @@
 {
-  "dataset": "/media/luiza/HDLuiza/Dataset/Gaze/MPIIFaceGaze_normalizad/",
+  "dataset": "/media/nvidia/HDLuiza/Dataset/Gaze/MPIIFaceGaze_normalizad",
   "test_id": 0,
   "outdir": "output",
   "seed": 6,
   "num_workers": 0,
-  "epochs": 40,
-  "batch_size": 8,
+  "epochs": 30,
+  "batch_size": 64,
   "lr": 0.01,
   "weight_decay": 0.0001,
   "momentum": 0.9,
   "nesterov": true,
-  "milestones": "[20, 30]",
-  "lr_decay": 0.1
+  "milestones": "[5, 10, 20, 30]",
+  "lr_decay": 0.1,
+  "use_cuda": true
 }

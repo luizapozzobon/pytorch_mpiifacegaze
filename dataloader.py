@@ -8,7 +8,6 @@ import glob
 import numbers
 import random
 import numpy as np
-import torch
 from torch.utils.data import Dataset, DataLoader
 
 default_opener = lambda p_: h5py.File(p_, 'r')
@@ -34,7 +33,6 @@ class HDF5Dataset(Dataset):
             - transform_label: tranformation to apply to read HDF5 label.
             - shuffle_shards: if true, shards are shuffled with seed
         """
-
         if len(file_ps) == 0 or not all(os.path.isfile(p) for p in file_ps):
             raise ValueError('Expected list of paths to HDF5 files, got {}'.format(file_ps))
         self.opener = opener
@@ -145,7 +143,6 @@ def get_loaders(files_and_shards, files_path, test_filenames, custom_getitem,
             - num_workers: PyTorch's dataloader num_workers param.
             - use_gpu: PyTorch's dataloader pin_memory param.
     """
-
     train_files = glob.glob(files_path + '*' + extension)
 
     test_files = [file for file in train_files if any(f in file for f in test_filenames)]
